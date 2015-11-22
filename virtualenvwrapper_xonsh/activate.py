@@ -80,7 +80,13 @@ def _concreteHookPath(hook, hook_d):
 
 
 def runHookScript(script, env_d=None):
-    env_d = Path(env_dir()) if not env_d else Path(env_d)
+    if not env_d:
+        if not env_dir():
+            raise RuntimeError("No VIRTUAL_ENV active")
+        env_d = Path(env_dir())
+    else:
+        env_d = Path(env_d)
+
     hook_path = env_d / "bin" / Path(_hook_scripts[script][0])
     hook_script = _concreteHookPath(script, env_d)
     if hook_script.exists():
@@ -145,7 +151,7 @@ def lsvirtualenv(args, stdin=None):
         print(venv)
         if args.longmode:
             print("{}".format("=" * len(venv)))
-            runHookScript("get_env_details")
+            runHookScript("get_env_details", Path(env_root_dir()) / venv)
             print()
 
 
@@ -160,8 +166,6 @@ def mkvirtualenv(args, stdin=None):
     print("mkvirtualenv")
 
 def showvirtualenv(args, stdin=None):
-    root_dir = env_root_dir()
-
     parser = ArgumentParser(prog="showvirtualenv")
     parser.add_argument("env_name", nargs='?', default=None,
                         help="If not specified the currently active env is "
@@ -184,6 +188,7 @@ def showvirtualenv(args, stdin=None):
 
 @ensureEnv
 def editvirtualenv(args, stdin=None):
+    # TODO
     env_d = Path(env_dir())
     print("TODO", env_d)
 
@@ -192,12 +197,12 @@ _helpers = {
         "cdproject": cdproject,
         "cdvirtualenv": cdvirtualenv,
         "cdsitepackages": cdsitepackages,
-        #"cpvirtualenv": cpvirtualenv,
         "lsvirtualenv": lsvirtualenv,
+        "showvirtualenv": showvirtualenv,
+        #"cpvirtualenv": cpvirtualenv,
         #"rmvirtualenv": rmvirtualenv,
         #"mkvirtualenv": mkvirtualenv,
-        "editvirtualenv": editvirtualenv,
-        "showvirtualenv": showvirtualenv,
+        #"editvirtualenv": editvirtualenv,
         }
 
 for name, func in _helpers.items():

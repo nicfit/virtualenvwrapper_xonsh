@@ -50,7 +50,7 @@ def project_dir():
 def getAllEnvs():
     '''Returns a list of all virtualenv directories.'''
     all_envs = []
-    for f in env_root_dir().iterdir():
+    for f in Path(env_root_dir()).iterdir():
         if f.is_dir():
             all_envs.append(f.name)
     return all_envs
