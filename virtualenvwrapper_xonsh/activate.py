@@ -4,7 +4,8 @@ from pathlib import Path
 from argparse import ArgumentParser
 from builtins import __xonsh_env__ as env
 
-from .env import env_dir, project_dir, env_root_dir, ensureEnv, getAllEnvs
+from .env import (env_dir, project_dir, env_root_dir, ensureEnv, getAllEnvs,
+                  selectEnv)
 
 
 ACTIVATE_XONSH = """#!/usr/bin/env xonsh
@@ -158,12 +159,15 @@ def lsvirtualenv(args, stdin=None):
 def cpvirtualenv(args, stdin=None):
     # TODO
     print("cpvirtualenv")
-def rmvirtualenv(args, stdin=None):
-    # TODO
-    print("rmvirtualenv")
 def mkvirtualenv(args, stdin=None):
     # TODO
     print("mkvirtualenv")
+
+
+def rmvirtualenv(args, stdin=None):
+    # TODO
+    print("rmvirtualenv")
+
 
 def showvirtualenv(args, stdin=None):
     parser = ArgumentParser(prog="showvirtualenv")
@@ -172,17 +176,7 @@ def showvirtualenv(args, stdin=None):
                              "used.")
 
     args = parser.parse_args(args)
-    if args.env_name is None:
-        if not env_dir():
-            raise RuntimeError("No active virtualenv to use as default. Try "
-                               "'showvirtualenv env_name'")
-        env_d = Path(env_dir())
-    else:
-        env_d = Path(env_root_dir()) / args.env_name
-
-    if not env_d.exists():
-        raise RuntimeError("virtualenv not found: {}".format(env_d))
-
+    env_d = Path(selectEnv(args.env_name))
     runHookScript("get_env_details", env_d)
 
 
@@ -199,8 +193,8 @@ _helpers = {
         "cdsitepackages": cdsitepackages,
         "lsvirtualenv": lsvirtualenv,
         "showvirtualenv": showvirtualenv,
+        "rmvirtualenv": rmvirtualenv,
         #"cpvirtualenv": cpvirtualenv,
-        #"rmvirtualenv": rmvirtualenv,
         #"mkvirtualenv": mkvirtualenv,
         #"editvirtualenv": editvirtualenv,
         }

@@ -54,3 +54,18 @@ def getAllEnvs():
         if f.is_dir():
             all_envs.append(f.name)
     return all_envs
+
+
+def selectEnv(env_name):
+    if env_name is None:
+        if not env_dir():
+            raise RuntimeError("No active virtualenv set, please specify an "
+                               "environment.")
+        env_d = Path(env_dir())
+    else:
+        env_d = Path(env_root_dir()) / env_name
+
+    if not env_d.exists():
+        raise RuntimeError("virtualenv not found: {}".format(env_d))
+
+    return str(env_d)
