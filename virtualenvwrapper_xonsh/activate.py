@@ -165,8 +165,22 @@ def mkvirtualenv(args, stdin=None):
 
 
 def rmvirtualenv(args, stdin=None):
+    parser = ArgumentParser(prog="rmvirtualenv")
+    parser.add_argument("env_names", nargs='+',
+                        help="The virtualenvs to remove.")
+
+    args = parser.parse_args(args)
+    import ipdb; ipdb.set_trace()
+    env_d = Path(selectEnv(args.env_name))
+    runHookScript("get_env_details", env_d)
     # TODO
     print("rmvirtualenv")
+    # selectEnv
+    # Don't delete active
+    # pre hooks
+    # cd out of env
+    # rm
+    # posts hooks
 
 
 def showvirtualenv(args, stdin=None):
