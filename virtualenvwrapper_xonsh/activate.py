@@ -1,37 +1,39 @@
 # -*- coding: utf-8 -*-
 import builtins
 from pathlib import Path
+from argparse import ArgumentParser
 from builtins import __xonsh_env__ as env
 
-from .env import env_dir, project_dir
+from .env import env_dir, project_dir, env_root_dir, ensureEnv, getAllEnvs
 
 
 ACTIVATE_XONSH = """#!/usr/bin/env xonsh
+import builtins
 from pathlib import Path
 from builtins import __xonsh_env__ as env
 
-env_dir = Path('{env_dir}')
-$VIRTUAL_ENV = str(env_dir)
+env_d = Path('{env_d}')
+predeactivate_script = Path('{predeactivate}')
+postdeactivate_script = Path('{postdeactivate}')
 
-$_OLD_VIRTUAL_PATH = $PATH
-$PATH.insert(0, str(env_dir / "bin"))
+$VIRTUAL_ENV = str(env_d)
+
+$PATH.insert(0, str(env_d / 'bin'))
 
 if "PYTHONHOME" in env:
     $_OLD_VIRTUAL_PYTHONHOME = $PYTHONHOME
     del env["PYTHONHOME"]
 
 def _deactivate(args, stdin=None):
-    predeactivate_script = env_dir / "bin" / Path("predeactivate.xonsh")
-    postdeactivate_script = env_dir / "bin" / Path("postdeactivate.xonsh")
-
     builtins.aliases['source']([str(predeactivate_script)])
 
-    $PATH.remove(str(env_dir / "bin"))
+    $PATH.remove(str(env_d / "bin"))
     if "_OLD_VIRTUAL_PYTHONHOME" in env:
         $PYTHONHOME = $_OLD_VIRTUAL_PYTHONHOME
 
-    del builtins.aliases['deactivate']
     builtins.aliases['source']([str(postdeactivate_script)])
+
+    del builtins.aliases['deactivate']
     del env["VIRTUAL_ENV"]
 
 builtins.aliases['deactivate'] = _deactivate
@@ -40,55 +42,71 @@ builtins.aliases['deactivate'] = _deactivate
 PREACTIVATE_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
 from builtins import project_dir, env_dir
+print("preactivate")
 """
 
 POSTACTIVATE_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
 from builtins import project_dir, env_dir
+print("postactivate")
 """
 
 PREDEACTIVATE_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
 from builtins import project_dir, env_dir
+print("predeactivate")
 """
 
 POSTDEACTIVATE_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
 from builtins import project_dir, env_dir
+print("postdeactivate")
 """
 
-def activate(env_dir):
-    preactivate_script = env_dir / "bin" / Path("preactivate.xonsh")
-    activate_script = env_dir / "bin" / Path("activate.xonsh")
-    postactivate_script = env_dir / "bin" / Path("postactivate.xonsh")
-    predeactivate_script = env_dir / "bin" / Path("predeactivate.xonsh")
-    postdeactivate_script = env_dir / "bin" / Path("postdeactivate.xonsh")
+GET_ENV_DETAILS_XONSH = """#!/usr/bin/env xonsh
+print("gen_env_details")
+"""
 
-    for script in [preactivate_script, postactivate_script, activate_script,
-                   predeactivate_script, postdeactivate_script]:
+
+# {script_prefix: (script_basename: script_template)
+_hook_scripts = {s: ("{}.xonsh".format(s), "{}_XONSH".format(s.upper()))
+                   for s in ["preactivate", "activate", "postactivate",
+                             "predeactivate", "postdeactivate",
+                             "get_env_details"]}
+
+
+def _concreteHookPath(hook, hook_d):
+    return Path(hook_d) / "bin" / Path(_hook_scripts[hook][0])
+
+
+def runHookScript(script, env_d=None):
+    env_d = Path(env_dir()) if not env_d else Path(env_d)
+    hook_path = env_d / "bin" / Path(_hook_scripts[script][0])
+    hook_script = _concreteHookPath(script, env_d)
+    if hook_script.exists():
+        builtins.aliases['source']([str(hook_script)])
+
+
+def activate(env_d):
+    subst = {"env_d": str(env_d),
+             "predeactivate": str(_concreteHookPath("predeactivate", env_d)),
+             "postdeactivate": str(_concreteHookPath("postdeactivate", env_d)),
+            }
+    for hook in _hook_scripts:
+        script = _concreteHookPath(hook, env_d)
+        templ = _hook_scripts[hook][1]
+        # Install templates if not already existing
         if not script.exists():
             with script.open("w") as file:
-                templ = script.name.upper().replace('.', '_')
-                file.write(globals()[templ].format(env_dir=str(env_dir)
-                                           .strip()))
+                file.write(globals()[templ].format(**subst))
 
-
+    env["VIRTUAL_ENV"] = str(env_d)
     builtins.project_dir = project_dir
     builtins.env_dir = env_dir
-    builtins.aliases['source']([str(preactivate_script)])
-    builtins.aliases['source']([str(activate_script)])
-    builtins.aliases['source']([str(postactivate_script)])
 
-
-def ensureEnv(func):
-    '''Decorator for ensuring a VIRTUAL_ENV is set.'''
-    msg = "ERROR: no virtualenv active, or active virtualenv is missing"
-    def wrap(*args, **kwargs):
-        if env_dir() is None:
-            return (None, msg)
-        else:
-            return func(*args, **kwargs)
-    return wrap
+    runHookScript("preactivate")
+    runHookScript("activate")
+    runHookScript("postactivate")
 
 
 @ensureEnv
@@ -108,17 +126,32 @@ def cdvirtualenv(args, stdin=None):
 
 @ensureEnv
 def cdsitepackages(args, stdin=None):
-    env_dir = Path(env_dir()) / "lib"
-    pkgs_dir = [f for f in env_dir.glob("python*")][0] / 'site-packages'
+    env_d = Path(env_dir()) / "lib"
+    pkgs_dir = [f for f in env_d.glob("python*")][0] / 'site-packages'
     builtins.aliases["cd"]([str(pkgs_dir)])
+
+
+def lsvirtualenv(args, stdin=None):
+    parser = ArgumentParser(prog="lsvirtualenv")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-b", action="store_false", dest="longmode",
+                       help="Brief mode.", default=True)
+    group.add_argument("-l", action="store_true", dest="longmode",
+                       help="Long mode.", default=True)
+    args = parser.parse_args(args)
+
+    all_envs = getAllEnvs()
+    for venv in all_envs:
+        print(venv)
+        if args.longmode:
+            print("{}".format("=" * len(venv)))
+            runHookScript("get_env_details")
+            print()
 
 
 def cpvirtualenv(args, stdin=None):
     # TODO
     print("cpvirtualenv")
-def lsvirtualenv(args, stdin=None):
-    # TODO
-    print("lsvirtualenv")
 def rmvirtualenv(args, stdin=None):
     # TODO
     print("rmvirtualenv")
@@ -126,15 +159,45 @@ def mkvirtualenv(args, stdin=None):
     # TODO
     print("mkvirtualenv")
 
+def showvirtualenv(args, stdin=None):
+    root_dir = env_root_dir()
+
+    parser = ArgumentParser(prog="showvirtualenv")
+    parser.add_argument("env_name", nargs='?', default=None,
+                        help="If not specified the currently active env is "
+                             "used.")
+
+    args = parser.parse_args(args)
+    if args.env_name is None:
+        if not env_dir():
+            raise RuntimeError("No active virtualenv to use as default. Try "
+                               "'showvirtualenv env_name'")
+        env_d = Path(env_dir())
+    else:
+        env_d = Path(env_root_dir()) / args.env_name
+
+    if not env_d.exists():
+        raise RuntimeError("virtualenv not found: {}".format(env_d))
+
+    runHookScript("get_env_details", env_d)
+
+
+@ensureEnv
+def editvirtualenv(args, stdin=None):
+    env_d = Path(env_dir())
+    print("TODO", env_d)
+
 
 _helpers = {
         "cdproject": cdproject,
         "cdvirtualenv": cdvirtualenv,
         "cdsitepackages": cdsitepackages,
-        "cpvirtualenv": cpvirtualenv,
+        #"cpvirtualenv": cpvirtualenv,
         "lsvirtualenv": lsvirtualenv,
-        "rmvirtualenv": rmvirtualenv,
-        "mkvirtualenv": mkvirtualenv,
+        #"rmvirtualenv": rmvirtualenv,
+        #"mkvirtualenv": mkvirtualenv,
+        "editvirtualenv": editvirtualenv,
+        "showvirtualenv": showvirtualenv,
         }
 
 for name, func in _helpers.items():
