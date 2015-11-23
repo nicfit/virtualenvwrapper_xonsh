@@ -9,6 +9,8 @@ from builtins import __xonsh_env__ as env
 from xonsh.tools import XonshError
 
 from .env import envDir, projectDir, envRootDir, ensureEnv, getAllEnvs, useEnv
+builtins.projectDir = projectDir
+builtins.envDir = envDir
 
 
 _BASIC_XONSH = """#!/usr/bin/env xonsh
@@ -18,11 +20,13 @@ print("-- {env_name} {hook}")
 """
 
 ACTIVATE_XONSH = """#!/usr/bin/env xonsh
+import sys
 import builtins
 from pathlib import Path
 from builtins import __xonsh_env__ as env
 
 env_d = Path('{env_d}')
+bin_d = Path('{env_d}') / "bin"
 predeactivate_script = Path('{predeactivate}')
 postdeactivate_script = Path('{postdeactivate}')
 
@@ -35,16 +39,23 @@ if "PYTHONHOME" in env:
     del env["PYTHONHOME"]
 
 def _deactivate(args, stdin=None):
-    builtins.aliases['source']([str(predeactivate_script)])
+    try:
+        builtins.aliases['source']([str(predeactivate_script)])
+    except Exception as ex:
+        print("%s: %s" % (postdeactivate_script.parts[-1], ex))
 
-    $PATH.remove(str(env_d / "bin"))
+    if str(bin_d) in $PATH:
+        $PATH.remove(str(bin_d))
     if "_OLD_VIRTUAL_PYTHONHOME" in env:
         $PYTHONHOME = $_OLD_VIRTUAL_PYTHONHOME
 
-    builtins.aliases['source']([str(postdeactivate_script)])
+    try:
+        builtins.aliases['source']([str(postdeactivate_script)])
+    except Exception as ex:
+        print("%s: %s" % (postdeactivate_script.parts[-1], ex))
 
-    del builtins.aliases['deactivate']
     del env["VIRTUAL_ENV"]
+    del builtins.aliases['deactivate']
 
 builtins.aliases['deactivate'] = _deactivate
 """
@@ -56,6 +67,10 @@ POSTDEACTIVATE_XONSH = _BASIC_XONSH
 GET_ENV_DETAILS_XONSH = _BASIC_XONSH
 PRERMVIRTUALENV_XONSH = _BASIC_XONSH
 POSTRMVIRTUALENV_XONSH = _BASIC_XONSH
+PREMKVIRTUALENV_XONSH = _BASIC_XONSH
+POSTMKVIRTUALENV_XONSH = _BASIC_XONSH
+PRECPVIRTUALENV_XONSH = _BASIC_XONSH
+POSTCPVIRTUALENV_XONSH = _BASIC_XONSH
 
 
 # {script_prefix: (script_basename: script_template)
@@ -63,6 +78,8 @@ _hook_scripts = {s: ("{}.xonsh".format(s), "{}_XONSH".format(s.upper()))
                    for s in ["preactivate", "activate", "postactivate",
                              "predeactivate", "postdeactivate",
                              "prermvirtualenv", "postrmvirtualenv",
+                             "premkvirtualenv", "postmkvirtualenv",
+                             "precpvirtualenv", "postcpvirtualenv",
                              "get_env_details"]}
 
 
@@ -81,7 +98,7 @@ def runHookScript(script, env_d=None):
     if not env_d:
         if not envDir():
             raise RuntimeError("No VIRTUAL_ENV active")
-        env_d = Path(envDir())
+        env_d = envDir()
     else:
         env_d = Path(env_d)
 
@@ -94,7 +111,7 @@ def runHookScript(script, env_d=None):
             print("{} error:\n{}".format(hook_script, ex), file=sys.stderr)
 
 
-def activate(env_d):
+def activate(env_d, reinstall=False):
     env_d = Path(useEnv(env_d))
 
     subst = {"env_d": str(env_d),
@@ -107,13 +124,11 @@ def activate(env_d):
         templ = _hook_scripts[hook][1]
         subst["hook"] = hook
         # Install templates if not already existing
-        if not script.exists():
+        if not script.exists() or reinstall:
             with script.open("w") as file:
                 file.write(globals()[templ].format(**subst))
 
     env["VIRTUAL_ENV"] = str(env_d)
-    builtins.projectDir = projectDir
-    builtins.envDir = envDir
 
     runHookScript("preactivate")
     runHookScript("activate")
@@ -131,7 +146,7 @@ def cdproject(args=None, stdin=None):
                         help="No output message for missing .project file.")
     args = parser.parse_args(args)
 
-    project_file = Path(envDir()) / ".project"
+    project_file = envDir() / ".project"
     if args.set_dir:
         with project_file.open("w") as fp:
             fp.write(str(args.set_dir))
@@ -153,12 +168,12 @@ def cdproject(args=None, stdin=None):
 
 @ensureEnv
 def cdvirtualenv(args, stdin=None):
-    builtins.aliases["cd"]([envDir()])
+    builtins.aliases["cd"]([str(envDir())])
 
 
 @ensureEnv
 def cdsitepackages(args, stdin=None):
-    env_d = Path(envDir()) / "lib"
+    env_d = envDir() / "lib"
     pkgs_dir = [f for f in env_d.glob("python*")][0] / 'site-packages'
     builtins.aliases["cd"]([str(pkgs_dir)])
 
@@ -173,17 +188,39 @@ def lsvirtualenv(args, stdin=None):
     args = parser.parse_args(args)
 
     all_envs = getAllEnvs()
-    for venv in all_envs:
+    for venv in sorted(all_envs):
         print(venv)
         if args.longmode:
             print("{}".format("=" * len(venv)))
-            runHookScript("get_env_details", Path(envRootDir()) / venv)
+            runHookScript("get_env_details", envRootDir() / venv)
             print()
 
 
 def cpvirtualenv(args, stdin=None):
-    # TODO
-    print("cpvirtualenv")
+    parser = ArgumentParser(prog="cpvirtualenv")
+    parser.add_argument("src_env")
+    parser.add_argument("dst_env")
+    args = parser.parse_args(args)
+
+    src_env = envRootDir() / args.src_env
+    dst_env = envRootDir() / args.dst_env
+    if not src_env.exists():
+        return None, "Source env does not exist: {}".format(args.src_env)
+    if dst_env.exists():
+        return None, "Destination env already exist: {}".format(args.dst_env)
+
+    runHookScript("precpvirtualenv", src_env)
+    runHookScript("premkvirtualenv", src_env)
+
+    print("Copying {} as {}...".format(src_env.parts[-1], dst_env.parts[-1]))
+    shutil.copytree(str(src_env), str(dst_env), symlinks=True)
+
+    # TODO: fix .project, shows old name
+    # TODO: fix active, shows old old VIRTUAL_ENV
+
+    runHookScript("postmkvirtualenv", src_env)
+    runHookScript("postcpvirtualenv", src_env)
+
 
 def rmvirtualenv(args, stdin=None):
     parser = ArgumentParser(prog="rmvirtualenv")
@@ -191,7 +228,7 @@ def rmvirtualenv(args, stdin=None):
                         help="The virtualenvs to remove.")
 
     args = parser.parse_args(args)
-    active_env_d = Path(envDir()) if envDir() else None
+    active_env_d = envDir() if envDir() else None
 
     for env_name in args.env_names:
         env_d = Path(useEnv(env_name))
@@ -238,7 +275,7 @@ def mkvirtualenv(args, stdin=None):
 
     args, venv_args  = parser.parse_known_args(args)
 
-    env_d = Path(envRootDir()) / args.env_name[0]
+    env_d = envRootDir() / args.env_name[0]
     if env_d.exists():
         return None, "virutalenvs exists: {}".format(env_d)
 
@@ -263,13 +300,6 @@ def mkvirtualenv(args, stdin=None):
                          env=popen_env).wait()
 
 
-@ensureEnv
-def editvirtualenv(args, stdin=None):
-    # TODO
-    env_d = Path(envDir())
-    print("TODO", env_d)
-
-
 _helpers = {
         "cdproject": cdproject,
         "cdvirtualenv": cdvirtualenv,
@@ -277,9 +307,8 @@ _helpers = {
         "lsvirtualenv": lsvirtualenv,
         "showvirtualenv": showvirtualenv,
         "rmvirtualenv": rmvirtualenv,
-        #"cpvirtualenv": cpvirtualenv,
+        "cpvirtualenv": cpvirtualenv,
         "mkvirtualenv": mkvirtualenv,
-        #"editvirtualenv": editvirtualenv,
         }
 
 for name, func in _helpers.items():

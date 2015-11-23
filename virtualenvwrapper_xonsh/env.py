@@ -21,7 +21,7 @@ def envDir():
     if ("VIRTUAL_ENV" not in env) or not env["VIRTUAL_ENV"]:
         return None
     else:
-        return env["VIRTUAL_ENV"]
+        return Path(env["VIRTUAL_ENV"])
 
 
 def envRootDir():
@@ -30,12 +30,12 @@ def envRootDir():
         raise RuntimeError("virtualenvwrapper variable "
                            "$VIRTUALENVWRAPPER_HOOK_DIR not defined")
     root_dir = Path(env["VIRTUALENVWRAPPER_HOOK_DIR"])
-    return str(root_dir)
+    return root_dir
 
 
 def projectDir():
     '''Return the project directory or None if not set.'''
-    project_file = Path(envDir()) / ".project"
+    project_file = envDir() / ".project"
     if not project_file.exists():
         print("No {} file".format(str(project_file)))
         return None
@@ -51,7 +51,7 @@ def projectDir():
 def getAllEnvs():
     '''Returns a list of all virtualenv directories.'''
     all_envs = []
-    for f in Path(envRootDir()).iterdir():
+    for f in envRootDir().iterdir():
         if f.is_dir():
             all_envs.append(f.name)
     return all_envs
@@ -62,11 +62,11 @@ def useEnv(env_name):
         if not envDir():
             raise RuntimeError("No active virtualenv set, please specify an "
                                "environment.")
-        env_d = Path(envDir())
+        env_d = envDir()
     else:
-        env_d = Path(envRootDir()) / env_name
+        env_d = envRootDir() / env_name
 
     if not env_d.exists():
-        raise RuntimeError("virtualenv not found: {}".format(env_d))
+        raise ValueError("virtualenv not found: {}".format(env_d))
 
-    return str(env_d)
+    return env_d

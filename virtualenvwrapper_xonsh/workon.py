@@ -13,9 +13,11 @@ def workon(args, stdin=None):
     desc = "Deactivate any currently activated virtualenv and activate the "\
            "named environment, triggering any hooks in the process."
 
-    env_d = Path(envRootDir())
+    env_d = envRootDir()
 
     parser = ArgumentParser('workon', description=desc)
+    parser.add_argument("--reinstall", action="store_true",
+                        help="Reinstall hook files.")
     parser.add_argument("env_name", nargs='?', default=None,
                         help="If not specified a list of available "
                              "environments is printed.")
@@ -30,5 +32,5 @@ def workon(args, stdin=None):
         runHookScript("deactivate")
 
     env_d = useEnv(args.env_name)
-    activate(env_d)
+    activate(env_d, reinstall=args.reinstall)
     cdproject(['-q'])

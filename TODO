@@ -6,22 +6,26 @@
     x postdeactivate
     x preactivate
     x predeactivate
-    - precpvirtualenv
-    - postcpvirtualenv
-    - postmkvirtualenv
-    - premkproject
+    x precpvirtualenv
+    x postcpvirtualenv
+    x postmkvirtualenv
+    x premkproject
     - postmkproject
     x prermvirtualenv
     x postrmvirtualenv
   - Shell completion
-  - cpvirtualenv(args, stdin=None):
+  ~ cpvirtualenv(args, stdin=None):
+    - activate.xonsh patch
+    - .project patch
   x lsvirtualenv(args, stdin=None):
   x rmvirtualenv(args, stdin=None):
-  - mkvirtualenv(args, stdin=None):
+  ~ mkvirtualenv(args, stdin=None):
+    - Unformatted ArgumentParser epilog
   x showvirtualenv
-  ~ editvirtualenv
-  - mkproject + project templates
   - Set HOOK dir env , use VIRTUALENVWRAPPER_HOOK_DIR is not defined
   - TESTS!
-  - Release
   - Test envs with spaces in names
+  - ** Release **
+  ~ editvirtualenv
+  - mkproject + project templates
+  - workon --reinstall can restore/merges a .tmpl file, likewise produce .bak
