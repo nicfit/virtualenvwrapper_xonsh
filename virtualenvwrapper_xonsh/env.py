@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import builtins
+import subprocess
 from pathlib import Path
+from argparse import ArgumentParser
 from builtins import __xonsh_env__ as env
 
 
@@ -56,7 +58,7 @@ def getAllEnvs():
     return all_envs
 
 
-def selectEnv(env_name):
+def useEnv(env_name):
     if env_name is None:
         if not env_dir():
             raise RuntimeError("No active virtualenv set, please specify an "
@@ -69,3 +71,20 @@ def selectEnv(env_name):
         raise RuntimeError("virtualenv not found: {}".format(env_d))
 
     return str(env_d)
+
+
+def mkvirtualenv(args, stdin=None):
+    proc = subprocess.Popen(["virtualenv", "--help"], universal_newlines=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    stdout, stderr = proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError("Unable to run virtualenv: " + stderr)
+
+    # FIXME: ArgumentParser is formatted epilog, want it untouched
+    parser = ArgumentParser(prog="mkvirtualenv", epilog=stdout)
+    parser.add_argument("env_name")
+
+    args = parser.parse_args(args)
+
+    import ipdb; ipdb.set_trace()

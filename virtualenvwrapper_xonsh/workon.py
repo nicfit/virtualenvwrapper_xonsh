@@ -32,5 +32,5 @@ def workon(args, stdin=None):
     # Activate the env
     env_d = env_d / Path(args.env_name)
     activate(env_d)
-    cdproject()
+    cdproject(['-q'])
 

@@ -1,0 +1,27 @@
+  - repo
+  x cdproject allow setting when not set
+  ~ xonsh hook files
+    x get_env_details.xonsh
+    x postactivate
+    x postdeactivate
+    x preactivate
+    x predeactivate
+    - precpvirtualenv
+    - postcpvirtualenv
+    - postmkvirtualenv
+    - premkproject
+    - postmkproject
+    x prermvirtualenv
+    x postrmvirtualenv
+  - Shell completion
+  - cpvirtualenv(args, stdin=None):
+  x lsvirtualenv(args, stdin=None):
+  x rmvirtualenv(args, stdin=None):
+  - mkvirtualenv(args, stdin=None):
+  x showvirtualenv
+  ~ editvirtualenv
+  - mkproject + project templates
+  - Set HOOK dir env , use VIRTUALENVWRAPPER_HOOK_DIR is not defined
+  - TESTS!
+  - Release
+  - Test envs with spaces in names
