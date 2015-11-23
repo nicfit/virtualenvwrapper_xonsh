@@ -5,15 +5,15 @@ from argparse import ArgumentParser
 from pathlib import Path
 from builtins import __xonsh_env__ as env
 
-from .env import env_root_dir, getAllEnvs
-from .activate import activate, cdproject, lsvirtualenv
+from .env import envRootDir, useEnv
+from .activate import activate, cdproject, lsvirtualenv, runHookScript
 
 
 def workon(args, stdin=None):
     desc = "Deactivate any currently activated virtualenv and activate the "\
            "named environment, triggering any hooks in the process."
 
-    env_d = Path(env_root_dir())
+    env_d = Path(envRootDir())
 
     parser = ArgumentParser('workon', description=desc)
     parser.add_argument("env_name", nargs='?', default=None,
@@ -27,10 +27,8 @@ def workon(args, stdin=None):
 
     if "deactivate" in builtins.aliases:
         # alias is removed by the function
-        builtins.aliases['deactivate']([])
+        runHookScript("deactivate")
 
-    # Activate the env
-    env_d = env_d / Path(args.env_name)
+    env_d = useEnv(args.env_name)
     activate(env_d)
     cdproject(['-q'])
-

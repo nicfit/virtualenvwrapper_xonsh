@@ -2,18 +2,18 @@
 import sys
 import shutil
 import builtins
+import subprocess
 from pathlib import Path
 from argparse import ArgumentParser
 from builtins import __xonsh_env__ as env
 from xonsh.tools import XonshError
 
-from .env import (env_dir, project_dir, env_root_dir, ensureEnv, getAllEnvs,
-                  useEnv, mkvirtualenv)
+from .env import envDir, projectDir, envRootDir, ensureEnv, getAllEnvs, useEnv
 
 
 _BASIC_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
-from builtins import project_dir, env_dir
+from builtins import projectDir, envDir
 print("-- {env_name} {hook}")
 """
 
@@ -71,20 +71,32 @@ def _concreteHookPath(hook, hook_d):
 
 
 def runHookScript(script, env_d=None):
+    if script == "deactivate" and "deactivate" in builtins.aliases:
+        try:
+            builtins.aliases['deactivate']([])
+        except Exception as ex:
+            print("{} error:\n{}".format(script, ex), file=sys.stderr)
+        return
+
     if not env_d:
-        if not env_dir():
+        if not envDir():
             raise RuntimeError("No VIRTUAL_ENV active")
-        env_d = Path(env_dir())
+        env_d = Path(envDir())
     else:
         env_d = Path(env_d)
 
     hook_path = env_d / "bin" / Path(_hook_scripts[script][0])
     hook_script = _concreteHookPath(script, env_d)
     if hook_script.exists():
-        builtins.aliases['source']([str(hook_script)])
+        try:
+            builtins.aliases['source']([str(hook_script)])
+        except Exception as ex:
+            print("{} error:\n{}".format(hook_script, ex), file=sys.stderr)
 
 
 def activate(env_d):
+    env_d = Path(useEnv(env_d))
+
     subst = {"env_d": str(env_d),
              "predeactivate": str(_concreteHookPath("predeactivate", env_d)),
              "postdeactivate": str(_concreteHookPath("postdeactivate", env_d)),
@@ -100,8 +112,8 @@ def activate(env_d):
                 file.write(globals()[templ].format(**subst))
 
     env["VIRTUAL_ENV"] = str(env_d)
-    builtins.project_dir = project_dir
-    builtins.env_dir = env_dir
+    builtins.projectDir = projectDir
+    builtins.envDir = envDir
 
     runHookScript("preactivate")
     runHookScript("activate")
@@ -119,7 +131,7 @@ def cdproject(args=None, stdin=None):
                         help="No output message for missing .project file.")
     args = parser.parse_args(args)
 
-    project_file = Path(env_dir()) / ".project"
+    project_file = Path(envDir()) / ".project"
     if args.set_dir:
         with project_file.open("w") as fp:
             fp.write(str(args.set_dir))
@@ -141,12 +153,12 @@ def cdproject(args=None, stdin=None):
 
 @ensureEnv
 def cdvirtualenv(args, stdin=None):
-    builtins.aliases["cd"]([env_dir()])
+    builtins.aliases["cd"]([envDir()])
 
 
 @ensureEnv
 def cdsitepackages(args, stdin=None):
-    env_d = Path(env_dir()) / "lib"
+    env_d = Path(envDir()) / "lib"
     pkgs_dir = [f for f in env_d.glob("python*")][0] / 'site-packages'
     builtins.aliases["cd"]([str(pkgs_dir)])
 
@@ -165,7 +177,7 @@ def lsvirtualenv(args, stdin=None):
         print(venv)
         if args.longmode:
             print("{}".format("=" * len(venv)))
-            runHookScript("get_env_details", Path(env_root_dir()) / venv)
+            runHookScript("get_env_details", Path(envRootDir()) / venv)
             print()
 
 
@@ -179,7 +191,7 @@ def rmvirtualenv(args, stdin=None):
                         help="The virtualenvs to remove.")
 
     args = parser.parse_args(args)
-    active_env_d = Path(env_dir()) if env_dir() else None
+    active_env_d = Path(envDir()) if envDir() else None
 
     for env_name in args.env_names:
         env_d = Path(useEnv(env_name))
@@ -205,10 +217,56 @@ def showvirtualenv(args, stdin=None):
     runHookScript("get_env_details", env_d)
 
 
+def mkvirtualenv(args, stdin=None):
+    proc = subprocess.Popen(["virtualenv", "--help"], universal_newlines=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    stdout, stderr = proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError("Unable to run virtualenv: " + stderr)
+
+    # FIXME: ArgumentParser is formatted epilog, want it untouched
+    parser = ArgumentParser(prog="mkvirtualenv", epilog=stdout)
+    if len(args) > 1:
+        # Move the env_name postiion for argparse finds it first rather than
+        # put in the virutalenv opts.
+        args = [args[-1]] + args[:-1]
+    parser.add_argument("env_name", nargs=1)
+    parser.add_argument("-a", action="store", dest="project_path")
+    parser.add_argument("-i", action="append", dest="install_pkgs", default=[])
+    parser.add_argument("-r", action="append", dest="req_files", default=[])
+
+    args, venv_args  = parser.parse_known_args(args)
+
+    env_d = Path(envRootDir()) / args.env_name[0]
+    if env_d.exists():
+        return None, "virutalenvs exists: {}".format(env_d)
+
+    proc = subprocess.Popen(["virtualenv"] + venv_args + [str(env_d)])
+    result = proc.wait()
+    if result != 0:
+        return 1
+
+    from .workon import workon
+    workon([env_d.parts[-1]])
+
+    if args.project_path:
+        cdproject(["--set", args.project_path])
+
+    popen_env = {"PATH": ":".join(env["PATH"])}
+    for pkg in args.install_pkgs:
+        subprocess.Popen("pip install -U {}".format(pkg), shell=True,
+                         env=popen_env).wait()
+
+    for req in args.req_files:
+        subprocess.Popen("pip install -r {}".format(req), shell=True,
+                         env=popen_env).wait()
+
+
 @ensureEnv
 def editvirtualenv(args, stdin=None):
     # TODO
-    env_d = Path(env_dir())
+    env_d = Path(envDir())
     print("TODO", env_d)
 
 
