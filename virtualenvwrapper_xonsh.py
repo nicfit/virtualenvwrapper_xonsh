@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 import shutil
 import builtins
 import subprocess
 from pathlib import Path
 from argparse import ArgumentParser
+from os.path import expandvars, expanduser
 from builtins import __xonsh_env__ as env
-from xonsh.tools import XonshError
+from xonsh.tools import TERM_COLORS
 
+
+DEFAULT_VENV_DIR = "~/.virtualenvs"
 
 _BASIC_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
@@ -78,6 +82,9 @@ _hook_scripts = {s: ("{}.xonsh".format(s), "{}_XONSH".format(s.upper()))
                              "precpvirtualenv", "postcpvirtualenv",
                              "get_env_details"]}
 
+class Error(RuntimeError):
+    pass
+
 
 def _concreteHookPath(hook, hook_d):
     return Path(hook_d) / "bin" / Path(_hook_scripts[hook][0])
@@ -93,7 +100,7 @@ def runHookScript(script, env_d=None):
 
     if not env_d:
         if not envDir():
-            raise RuntimeError("No VIRTUAL_ENV active")
+            raise Error("No VIRTUAL_ENV active")
         env_d = envDir()
     else:
         env_d = Path(env_d)
@@ -109,17 +116,16 @@ def runHookScript(script, env_d=None):
 
 def ensureEnv(func):
     '''Decorator for ensuring a VIRTUAL_ENV is set.'''
-    msg = "no virtualenv active, or active virtualenv is missing"
     def wrap(*args, **kwargs):
         if envDir() is None:
-            raise RuntimeError(msg)
+            raise Error(ENV_REQ_MSG)
         else:
             return func(*args, **kwargs)
     return wrap
 
 
 def envDir():
-    '''Return the virutalenv root directory or None if not set.'''
+    '''Return the virtualenv root directory or None if not set.'''
     if ("VIRTUAL_ENV" not in env) or not env["VIRTUAL_ENV"]:
         return None
     else:
@@ -127,12 +133,24 @@ def envDir():
 
 
 def envRootDir():
-    '''The directory where virutalenvs are created/maintained.'''
-    if "VIRTUALENVWRAPPER_HOOK_DIR" not in env:
-        raise RuntimeError("virtualenvwrapper variable "
-                           "$VIRTUALENVWRAPPER_HOOK_DIR not defined")
-    root_dir = Path(env["VIRTUALENVWRAPPER_HOOK_DIR"])
-    return root_dir
+    '''The directory where virtualenv are stored/created.'''
+    for var in ['VIRTUALENVWRAPPER_XONSH_DIR', 'VIRTUALENVWRAPPER_HOOK_DIR']:
+        if var in env:
+            root_dir = Path(expandvars(expanduser(env[var])))
+            if root_dir.is_dir():
+                return root_dir
+            else:
+                print("{} does not exist or not a directory: {}"
+                        .format(var, root_dir))
+
+    root_dir = Path(expandvars(expanduser(DEFAULT_VENV_DIR)))
+    if root_dir.is_dir():
+        env['VIRTUALENVWRAPPER_XONSH_DIR'] = str(root_dir)
+        return root_dir
+
+    raise Error("Set $XONSH_VIRTUALENVWRAPPER_DIR to the directory to use "
+                "for virtualenvs. {} is the default but does not exist."
+                .format(DEFAULT_VENV_DIR))
 
 
 def projectDir():
@@ -159,11 +177,13 @@ def getAllEnvs():
     return all_envs
 
 
+ENV_REQ_MSG = """A virtualenv is not appear to be active.
+See `workon --help` and/or `mkvirtualenv --help` for more details."""
+
 def useEnv(env_name):
     if env_name is None:
         if not envDir():
-            raise RuntimeError("No active virtualenv set, please specify an "
-                               "environment.")
+            raise Error(ENV_REQ_MSG)
         env_d = envDir()
     else:
         env_d = envRootDir() / env_name
@@ -172,6 +192,7 @@ def useEnv(env_name):
         raise ValueError("virtualenv not found: {}".format(env_d))
 
     return env_d
+
 
 def activate(env_d, reinstall=False):
     env_d = Path(useEnv(env_d))
@@ -223,7 +244,7 @@ def cdproject(args=None, stdin=None):
         # cd to project dir
         _, cdresult_err = builtins.aliases["cd"]([project_dir])
         if cdresult_err:
-            raise XonshError(cdresult_err)
+            raise Error(cdresult_err)
     elif not args.quiet:
         print("No project set in {}".format(project_file), file=sys.stderr)
 
@@ -322,13 +343,13 @@ def mkvirtualenv(args, stdin=None):
 
     stdout, stderr = proc.communicate()
     if proc.returncode != 0:
-        raise RuntimeError("Unable to run virtualenv: " + stderr)
+        raise Error("Unable to run virtualenv: " + stderr)
 
     # FIXME: ArgumentParser is formatted epilog, want it untouched
     parser = ArgumentParser(prog="mkvirtualenv", epilog=stdout)
     if len(args) > 1:
         # Move the env_name postiion for argparse finds it first rather than
-        # put in the virutalenv opts.
+        # put in the virtualenv opts.
         args = [args[-1]] + args[:-1]
     parser.add_argument("env_name", nargs=1)
     parser.add_argument("-a", action="store", dest="project_path")
@@ -339,7 +360,7 @@ def mkvirtualenv(args, stdin=None):
 
     env_d = envRootDir() / args.env_name[0]
     if env_d.exists():
-        return None, "virutalenvs exists: {}".format(env_d)
+        return None, "virtualenv exists: {}".format(env_d)
 
     proc = subprocess.Popen(["virtualenv"] + venv_args + [str(env_d)])
     result = proc.wait()
@@ -400,3 +421,17 @@ builtins.aliases["showvirtualenv"] = showvirtualenv
 
 builtins.projectDir = projectDir
 builtins.envDir = envDir
+
+def _promptVirtualenv():
+    # FIXME: Allow color customization
+    if "VIRTUAL_ENV" in env and env["VIRTUAL_ENV"]:
+        return "(" + TERM_COLORS["YELLOW"] \
+                + os.path.basename(__xonsh_env__["VIRTUAL_ENV"]) \
+                + TERM_COLORS["NO_COLOR"] \
+                + ")"
+    else:
+        return ""
+env['FORMATTER_DICT']['virtualenv'] = _promptVirtualenv
+
+def updatePrompt():
+    env['PROMPT'] = "{virtualenv}" + env['PROMPT']
