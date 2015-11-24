@@ -21,7 +21,9 @@
   x rmvirtualenv(args, stdin=None):
   ~ mkvirtualenv(args, stdin=None):
     - Unformatted ArgumentParser epilog
+    - Pull off --prompt and write to activate.xonsh
   x showvirtualenv
+  - Move promt stuff out of xonshrc
   - Set HOOK dir env , use VIRTUALENVWRAPPER_HOOK_DIR is not defined
   - TESTS!
   - Test envs with spaces in names

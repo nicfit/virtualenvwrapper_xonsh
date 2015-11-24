@@ -8,10 +8,6 @@ from argparse import ArgumentParser
 from builtins import __xonsh_env__ as env
 from xonsh.tools import XonshError
 
-from .env import envDir, projectDir, envRootDir, ensureEnv, getAllEnvs, useEnv
-builtins.projectDir = projectDir
-builtins.envDir = envDir
-
 
 _BASIC_XONSH = """#!/usr/bin/env xonsh
 from builtins import __xonsh_env__ as env
@@ -110,6 +106,72 @@ def runHookScript(script, env_d=None):
         except Exception as ex:
             print("{} error:\n{}".format(hook_script, ex), file=sys.stderr)
 
+
+def ensureEnv(func):
+    '''Decorator for ensuring a VIRTUAL_ENV is set.'''
+    msg = "no virtualenv active, or active virtualenv is missing"
+    def wrap(*args, **kwargs):
+        if envDir() is None:
+            raise RuntimeError(msg)
+        else:
+            return func(*args, **kwargs)
+    return wrap
+
+
+def envDir():
+    '''Return the virutalenv root directory or None if not set.'''
+    if ("VIRTUAL_ENV" not in env) or not env["VIRTUAL_ENV"]:
+        return None
+    else:
+        return Path(env["VIRTUAL_ENV"])
+
+
+def envRootDir():
+    '''The directory where virutalenvs are created/maintained.'''
+    if "VIRTUALENVWRAPPER_HOOK_DIR" not in env:
+        raise RuntimeError("virtualenvwrapper variable "
+                           "$VIRTUALENVWRAPPER_HOOK_DIR not defined")
+    root_dir = Path(env["VIRTUALENVWRAPPER_HOOK_DIR"])
+    return root_dir
+
+
+def projectDir():
+    '''Return the project directory or None if not set.'''
+    project_file = envDir() / ".project"
+    if not project_file.exists():
+        print("No {} file".format(str(project_file)))
+        return None
+
+    # cd to project dir
+    with project_file.open() as fp:
+        project_dir = Path(fp.read().strip())
+        if not project_dir.exists():
+            raise ValueError("Invalid project file: {}".format(project_dir))
+    return project_dir
+
+
+def getAllEnvs():
+    '''Returns a list of all virtualenv directories.'''
+    all_envs = []
+    for f in envRootDir().iterdir():
+        if f.is_dir():
+            all_envs.append(f.name)
+    return all_envs
+
+
+def useEnv(env_name):
+    if env_name is None:
+        if not envDir():
+            raise RuntimeError("No active virtualenv set, please specify an "
+                               "environment.")
+        env_d = envDir()
+    else:
+        env_d = envRootDir() / env_name
+
+    if not env_d.exists():
+        raise ValueError("virtualenv not found: {}".format(env_d))
+
+    return env_d
 
 def activate(env_d, reinstall=False):
     env_d = Path(useEnv(env_d))
@@ -284,7 +346,6 @@ def mkvirtualenv(args, stdin=None):
     if result != 0:
         return 1
 
-    from .workon import workon
     workon([env_d.parts[-1]])
 
     if args.project_path:
@@ -300,16 +361,42 @@ def mkvirtualenv(args, stdin=None):
                          env=popen_env).wait()
 
 
-_helpers = {
-        "cdproject": cdproject,
-        "cdvirtualenv": cdvirtualenv,
-        "cdsitepackages": cdsitepackages,
-        "lsvirtualenv": lsvirtualenv,
-        "showvirtualenv": showvirtualenv,
-        "rmvirtualenv": rmvirtualenv,
-        "cpvirtualenv": cpvirtualenv,
-        "mkvirtualenv": mkvirtualenv,
-        }
+def workon(args, stdin=None):
+    desc = "Deactivate any currently activated virtualenv and activate the "\
+           "named environment, triggering any hooks in the process."
 
-for name, func in _helpers.items():
-    builtins.aliases[name] = func
+    env_d = envRootDir()
+
+    parser = ArgumentParser('workon', description=desc)
+    parser.add_argument("--reinstall", action="store_true",
+                        help="Reinstall hook files.")
+    parser.add_argument("env_name", nargs='?', default=None,
+                        help="If not specified a list of available "
+                             "environments is printed.")
+    args = parser.parse_args(args)
+
+    if not args.env_name:
+        lsvirtualenv(['-b'])
+        return
+
+    if "deactivate" in builtins.aliases:
+        # alias is removed by the function
+        runHookScript("deactivate")
+
+    env_d = useEnv(args.env_name)
+    activate(env_d, reinstall=args.reinstall)
+    cdproject(['-q'])
+
+
+builtins.aliases["workon"] = workon
+builtins.aliases["cdproject"] = cdproject
+builtins.aliases["cdvirtualenv"] = cdvirtualenv
+builtins.aliases["lsvirtualenv"] = lsvirtualenv
+builtins.aliases["rmvirtualenv"] = rmvirtualenv
+builtins.aliases["cpvirtualenv"] = cpvirtualenv
+builtins.aliases["mkvirtualenv"] = mkvirtualenv
+builtins.aliases["cdsitepackages"] = cdsitepackages
+builtins.aliases["showvirtualenv"] = showvirtualenv
+
+builtins.projectDir = projectDir
+builtins.envDir = envDir
