@@ -1,4 +1,4 @@
-  - repo
+  ~ repo
   x cdproject allow setting when not set
   ~ xonsh hook files
     x get_env_details.xonsh
@@ -10,24 +10,21 @@
     x postcpvirtualenv
     x postmkvirtualenv
     x premkproject
+    - premkproject
     - postmkproject
     x prermvirtualenv
     x postrmvirtualenv
   - Shell completion
-  ~ cpvirtualenv(args, stdin=None):
-    - activate.xonsh patch
-    - .project patch
+  x cpvirtualenv(args, stdin=None):
   x lsvirtualenv(args, stdin=None):
   x rmvirtualenv(args, stdin=None):
-  ~ mkvirtualenv(args, stdin=None):
-    - Unformatted ArgumentParser epilog
-    - Pull off --prompt and write to activate.xonsh
+  x mkvirtualenv(args, stdin=None):
   x showvirtualenv
-  - Move promt stuff out of xonshrc
-  - Set HOOK dir env , use VIRTUALENVWRAPPER_HOOK_DIR is not defined
+  x Move prompt stuff out of xonshrc
+  x Set HOOK dir env , use VIRTUALENVWRAPPER_HOOK_DIR is not defined
   - TESTS!
   - Test envs with spaces in names
-  - ** Release **
+  - *** Release ***
   ~ editvirtualenv
   - mkproject + project templates
   - workon --reinstall can restore/merges a .tmpl file, likewise produce .bak
