@@ -422,7 +422,7 @@ def mkvirtualenv(args, stdin=None):
         return 1
 
     prompt = args.prompt or env_name
-    workon([env_name, "--prompt={}".format(args.prompt)])
+    workon([env_name, "--prompt={}".format(prompt)])
 
     if args.project_path:
         cdproject(["--set", args.project_path])
